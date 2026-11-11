@@ -1,0 +1,19 @@
+# Azure
+resource_group_name = "YOUR_RESOURCE_GROUP_NAME"
+subscription_id     = "YOUR_SUBSCRIPTION_ID"
+key_vault_name      = "YOUR_KEY_VAULT_NAME"
+
+# Network
+## Module network
+address_space  = "10.1.0.0/16"
+address_prefix = "10.1.0.0/22"
+
+## K8s network profile
+service_cidr       = "10.2.0.0/16"
+dns_service_ip     = "10.2.0.10"
+
+# Environment
+project_name = "cloudops"
+environment  = "dev"
+
+

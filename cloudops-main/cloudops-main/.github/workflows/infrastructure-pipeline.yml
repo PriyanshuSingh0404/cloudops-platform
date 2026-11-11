@@ -1,0 +1,59 @@
+name: Infrastructure Pipeline
+
+on:
+  push:
+    paths:
+      - "terraform/**"
+    branches:
+      - main
+  pull_request:
+    paths:
+      - "terraform/**"
+
+jobs:
+  terraform-validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform-version: "1.9.0"
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
+
+      - name: Terraform Init
+        run: |
+          cd terraform/environments/dev
+          terraform init
+
+      - name: Terraform Format Check
+        run: |
+          cd terraform/environments/dev
+          terraform fmt --check --recursive
+
+      - name: Terraform Validate
+        run: |
+          cd terraform/environments/dev
+          terraform validate
+
+      - name: Terraform Plan
+        run: |
+          cd terraform/environments/dev
+          terraform plan \
+            -var="subscription_id=${{ secrets.AZURE_SUBSCRIPTION_ID }}" \
+            -var="resource_group_name=${{ secrets.RESOURCE_GROUP }}" \
+            -var="key_vault_name=${{ secrets.KEY_VAULT_NAME }}" \
+            -var="address_space=10.1.0.0/16" \
+            -var="address_prefix=10.1.0.0/22" \
+            -var="service_cidr=10.2.0.0/16" \
+            -var="dns_service_ip=10.2.0.10" \
+            -var="project_name=cloudops" \
+            -var="environment=dev" \
+            -out=tfplan

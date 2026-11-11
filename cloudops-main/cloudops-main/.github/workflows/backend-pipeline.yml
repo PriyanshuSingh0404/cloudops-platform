@@ -1,0 +1,56 @@
+name: Backend CI/CD
+
+on:
+  push:
+    paths:
+      - "applications/backend/**"
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Build Go Binary (compile check)
+        run: |
+          cd applications/backend
+          go build ./...
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
+
+      - name: Login to ACR
+        run: |
+          az acr login --name cloudopsacrdev
+
+      - name: Build and push Docker image
+        run: |
+          cd applications/backend
+          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/backend:latest .
+          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/backend:${{ github.sha }} .
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/backend:latest
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/backend:${{ github.sha }}
+
+      - name: Set AKS context
+        uses: azure/aks-set-context@v4
+        with:
+          resource-group: ${{ secrets.RESOURCE_GROUP }}
+          cluster-name: ${{ secrets.AKS_CLUSTER_NAME }}
+
+      - name: Deploy to AKS
+        run: |
+          sed -i "s|cloudopsacrdev.azurecr.io/backend:latest|${{ secrets.ACR_LOGIN_SERVER }}/backend:${{ github.sha }}|g" \
+            kubernetes/base/backend/deployment.yml
+          kubectl apply -f kubernetes/base/backend/deployment.yml
+          kubectl rollout status deployment/backend --timeout=300s

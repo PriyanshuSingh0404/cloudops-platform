@@ -1,0 +1,46 @@
+name: Frontend CI/CD
+
+on:
+  push:
+    paths:
+      - "applications/frontend/**"
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
+
+      - name: Login to ACR
+        run: |
+          az acr login --name cloudopsacrdev
+
+      - name: Build and push Docker image
+        run: |
+          cd applications/frontend
+          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/frontend:latest .
+          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/frontend:${{ github.sha }} .
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/frontend:latest
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/frontend:${{ github.sha }}
+
+      - name: Set AKS context
+        uses: azure/aks-set-context@v4
+        with:
+          resource-group: ${{ secrets.RESOURCE_GROUP }}
+          cluster-name: ${{ secrets.AKS_CLUSTER_NAME }}
+
+      - name: Deploy to AKS
+        run: |
+          sed -i "s|cloudopsacrdev.azurecr.io/frontend:latest|${{ secrets.ACR_LOGIN_SERVER }}/frontend:${{ github.sha }}|g" \
+            kubernetes/base/frontend/deployment.yml
+          kubectl apply -f kubernetes/base/frontend/deployment.yml
+          kubectl rollout status deployment/frontend --timeout=300s
